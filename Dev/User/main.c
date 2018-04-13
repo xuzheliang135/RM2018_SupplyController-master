@@ -50,17 +50,18 @@ uint8_t ir_pd_2_counter[4] = {0};
 uint32_t container_counter[2] = {0};
 
 /*Servo output PWM should between 200 to 1000 */
-const uint16_t CCR1_Open_front = 200;
-const uint16_t CCR1_Open_back = 700;
+const uint16_t CCR1_Open = 200;
 const uint16_t CCR1_Close = 400;
 uint16_t CCR1_Val = CCR1_Close;
-const uint16_t CCR2_Open_front = 250;
-const uint16_t CCR2_Open_back = 850;
+
+const uint16_t CCR2_Open = 250;
 const uint16_t CCR2_Close = 450;
 uint16_t CCR2_Val = CCR2_Close;
+
 const uint16_t CCR3_Open = 320;
 const uint16_t CCR3_Close = 600;
 uint16_t CCR3_Val = CCR3_Open;
+
 const uint16_t CCR4_1 = 300;
 const uint16_t CCR4_2 = 1000;
 uint16_t CCR4_Val = CCR4_1;
@@ -185,7 +186,7 @@ int main(void)
 			{
 				if (container_counter[i] == 0)
 				{
-					if (GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i) || GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_10 << i))// HIGH valid here
+					if (GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i))// HIGH valid here
 					{
 						container_counter[i]++;//container_counter[i]=4;
 					}
@@ -201,19 +202,15 @@ int main(void)
 						global_supply_counter++;
 						//open container here
 						if (i == 0)
-							CCR1_Val = CCR1_Open_front;
-						else 
-							CCR2_Val = CCR2_Open_front;
-					}
-					else if (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_10 << i))		//The car comes from the back end side
-					{
-						//whenever the supply is taken once, the counter plus 1
-						global_supply_counter++;
-						//open container here
-						if (i == 0)
-							CCR1_Val = CCR1_Open_back;
-						else 
-							CCR2_Val = CCR2_Open_back;
+						{	
+							CCR1_Val = CCR1_Open;
+							GPIO_WriteBit(GPIOB,GPIO_Pin_10,Bit_SET);
+						}
+						else
+						{
+							CCR2_Val = CCR2_Open;
+							GPIO_WriteBit(GPIOB,GPIO_Pin_11,Bit_SET);
+						}
 					}
 					else
 						container_counter[i] = 0;
@@ -223,11 +220,17 @@ int main(void)
 				{
 					//close container here
 					if (i == 0)
+					{
 						CCR1_Val = CCR1_Close;
+						GPIO_WriteBit(GPIOB,GPIO_Pin_10,Bit_RESET);
+					}
 					else
+					{
 						CCR2_Val = CCR2_Close;
+						GPIO_WriteBit(GPIOB,GPIO_Pin_11,Bit_RESET);
+					}
 				}
-				else if(!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i) && !GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_10 << i) && container_counter[i] > 30 + 4)
+				else if(!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i) && container_counter[i] > 30 + 4)
 				{
 					container_counter[i] = 0;
 				}
@@ -464,10 +467,10 @@ void GPIO_Config(void)
 	
 	/* Configure PB10,PB11 in input mode */
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10 | GPIO_Pin_11;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
 	GPIO_InitStructure.GPIO_OType = GPIO_OType_OD;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
-	GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_DOWN;
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
 }
 
