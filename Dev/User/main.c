@@ -186,7 +186,7 @@ int main(void)
 			{
 				if (container_counter[i] == 0)
 				{
-					if (GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i))// HIGH valid here
+					if (!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i))// HIGH valid here
 					{
 						container_counter[i]++;//container_counter[i]=4;
 					}
@@ -196,7 +196,7 @@ int main(void)
 				//ËäÈ»Ã»É¶ÓÃ
 				else if (container_counter[i]++ == 4)
 				{
-					if (GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i))				//The car comes from the front end side
+					if (!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i))				//The car comes from the front end side
 					{
 						//whenever the supply is taken once, the counter plus 1
 						global_supply_counter++;
@@ -230,7 +230,7 @@ int main(void)
 						GPIO_WriteBit(GPIOB,GPIO_Pin_11,Bit_RESET);
 					}
 				}
-				else if(!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i) && container_counter[i] > 30 + 4)
+				else if(GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i) && container_counter[i] > 30 + 4)
 				{
 					container_counter[i] = 0;
 				}
