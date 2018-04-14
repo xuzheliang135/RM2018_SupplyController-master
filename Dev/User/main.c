@@ -25,7 +25,8 @@
 #include <string.h>
 #include <stdio.h>
 # include <stdlib.h>
-
+int record1[4];
+int record2[4];
 /* Global variables ----------------------------------------------------------*/
 volatile uint8_t status_10ms = 0;
 volatile uint8_t status_50ms = 0;
@@ -50,15 +51,15 @@ uint8_t ir_pd_2_counter[4] = {0};
 uint32_t container_counter[2] = {0};
 
 /*Servo output PWM should between 200 to 1000 */
-const uint16_t CCR1_Open = 200;
+const uint16_t CCR1_Open = 210;
 const uint16_t CCR1_Close = 400;
 uint16_t CCR1_Val = CCR1_Close;
 
-const uint16_t CCR2_Open = 250;
-const uint16_t CCR2_Close = 450;
+const uint16_t CCR2_Open = 350;
+const uint16_t CCR2_Close = 650;
 uint16_t CCR2_Val = CCR2_Close;
 
-const uint16_t CCR3_Open = 320;
+const uint16_t CCR3_Open = 250;
 const uint16_t CCR3_Close = 600;
 uint16_t CCR3_Val = CCR3_Open;
 
@@ -140,8 +141,10 @@ int main(void)
 			
 #ifdef TPP_RELEASE			
 			/* Read IR_PD_1 Pins */
+			
 			for(i = 0; i < 4; i++)
 			{
+				record1[i]=GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_2 << i);
 				if (ir_pd_1_counter[i] == 0)
 				{
 					if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_2 << i))
@@ -161,8 +164,10 @@ int main(void)
 			}
 			
 			/* Read IR_PD_2 Pins */
+			
 			for(i = 0; i < 4; i++)
 			{
+				record2[i]=GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_0 << i);
 				if (ir_pd_2_counter[i] == 0)
 				{
 					if (GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_0 << i))
@@ -241,8 +246,7 @@ int main(void)
 			{
 				case 1:
 					if ((!ir_pd_2_flag[0] || !ir_pd_2_flag[1])
-						&& !GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
-						&& !GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_11)
+						&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
 						&& CCR2_Val == CCR2_Close
 						&& global_supply_counter == 1
 					)
@@ -256,15 +260,13 @@ int main(void)
 					{
 						if ((!ir_pd_1_flag[0] || 
 							!ir_pd_1_flag[1])
-							&& !GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4) 
-							&& !GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_10)
+							&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4)
 							&& CCR1_Val == CCR1_Close)
 						{
 							FSM_state = 0;
 						}
 						else if ((!ir_pd_2_flag[0] || !ir_pd_2_flag[1])
-							&& !GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
-							&& !GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_11)
+							&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
 							&& CCR2_Val == CCR2_Close)
 						{
 							FSM_state = 1;
@@ -279,16 +281,14 @@ int main(void)
 					{
 						if ((!ir_pd_1_flag[0] || 
 							!ir_pd_1_flag[1] || !ir_pd_1_flag[2])
-							&& !GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4) 
-							&& !GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_11)
+							&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4) 
 							&& CCR1_Val == CCR1_Close)
 						{
 							FSM_state = 3;
 						}
 						else if ((!ir_pd_2_flag[0] || !ir_pd_2_flag[1]
 							|| !ir_pd_2_flag[2])
-							&& !GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
-							&& !GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_11)
+							&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
 							&& CCR2_Val == CCR2_Close)
 						{
 							FSM_state = 4;
