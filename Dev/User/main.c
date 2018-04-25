@@ -123,7 +123,9 @@ int main(void)
 	while (1)
 	{
 		if (status_10ms)
-		{
+		{	
+//			for(int uu=0;uu<4;uu++)GPIO_WriteBit(GPIOB,GPIO_Pin_0<<uu,Bit_SET);
+//			for(int uu=0;uu<4;uu++)GPIO_WriteBit(GPIOA,GPIO_Pin_8<<uu,Bit_SET);
 			status_10ms = 0;
 			
 			/* Read Encoder and Control PID */
@@ -248,8 +250,7 @@ int main(void)
 					if ((!ir_pd_2_flag[0] || !ir_pd_2_flag[1])
 						&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
 						&& CCR2_Val == CCR2_Close
-						&& global_supply_counter == 1
-					)
+						&& global_supply_counter == 1)
 					{
 						FSM_state = 1;
 						break;
@@ -468,10 +469,32 @@ void GPIO_Config(void)
 	/* Configure PB10,PB11 in input mode */
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10 | GPIO_Pin_11;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
-	GPIO_InitStructure.GPIO_OType = GPIO_OType_OD;
+	GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
 	GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_DOWN;
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
+	//////////////////////////////////////////////////////////////
+	//                                                          //
+	//   LED Config, GPIO PB0-PB3,GPIO PB0-PB3,PA8-PA11,        //
+	//                                                          //
+	//                                                          //
+	//////////////////////////////////////////////////////////////	
+	
+	/* Configure PB0-PB3 in input mode */
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
+	GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
+	GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_DOWN;	
+	GPIO_Init(GPIOB, &GPIO_InitStructure);	
+	
+	/* Configure PA8-PA11 in input mode */
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10 | GPIO_Pin_11;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
+	GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
+	GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_DOWN;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
 }
 
 /**
