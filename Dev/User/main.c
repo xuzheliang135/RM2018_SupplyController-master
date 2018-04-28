@@ -25,8 +25,16 @@
 #include <string.h>
 #include <stdio.h>
 # include <stdlib.h>
+
+#define OUTSIDE 1
+#define INSIDE 2
+#define NOT_FULL 0
+#define FULL 1
+
 int record1[4];
 int record2[4];
+int outside_state=0;
+int inside_state=0;
 /* Global variables ----------------------------------------------------------*/
 volatile uint8_t status_10ms = 0;
 volatile uint8_t status_50ms = 0;
@@ -84,6 +92,12 @@ void  Delay(uint32_t nCount);
 void	PWM_TIM3_Config(void);
 void PWM_TIM10_Config(void);
 void	GPIO_Config(void);
+void update_IR_state(void);
+void update_SW_state(void);
+void set_servo_state(void);
+int get_bullet_quantity(int);
+void check_supply_state(int);
+void revolve_servo(void);
 
 /**
   * @brief  Main program
@@ -93,17 +107,15 @@ void	GPIO_Config(void);
 int main(void)
 {
 	RCC_ClocksTypeDef RCC_Clocks;
-	uint32_t counter_2s = 0;
-  uint32_t counter_200ms = 0;
-	uint32_t vibration_counter = 0;
+//	uint32_t counter_200ms = 0;
+//	uint32_t vibration_counter = 0;
 	//If the container is not full after some time, the motor will perform anti-piping method.
-	uint32_t anti_piping_counter = 0;
-	uint32_t i = 0;
+//	uint32_t anti_piping_counter = 0;
 
 	/* Systick Timer Config */
 	RCC_GetClocksFreq(&RCC_Clocks);
 	//Config Systick at period of 10ms
-  SysTick_Config(RCC_Clocks.HCLK_Frequency / 100);
+	SysTick_Config(RCC_Clocks.HCLK_Frequency / 100);
 	
 	GPIO_Config();
 	PWM_TIM3_Config();
@@ -118,293 +130,42 @@ int main(void)
 	MiniBalance_PWM_Init();
 	Encoder_Init_TIM2();            //初始化编码器
 	
-	printf("\r\nWelcome to WaveShare STM32F4 series MCU Board Open405R\r\n");
 	/* Infinite loop */
 	while (1)
 	{
 		if (status_10ms)
 		{	
-//			for(int uu=0;uu<4;uu++)GPIO_WriteBit(GPIOB,GPIO_Pin_0<<uu,Bit_SET);
-//			for(int uu=0;uu<4;uu++)GPIO_WriteBit(GPIOA,GPIO_Pin_8<<uu,Bit_SET);
 			status_10ms = 0;
-			
 			/* Read Encoder and Control PID */
 			Encoder=Read_Encoder(2);                                  //===读取编码器的位置数据 初始值是10000，详见encoder.c 和encoder.h
-		  Moto1=Position_PID(Encoder,Target_position);              //===位置PID控制器
-//			if(!usart_buffer_pointer)
-//				printf("Encoder read: %d ; Target encoder: %d; Current PWM: %d \r\n", Encoder, Target_position, Moto1);	
+			Moto1=Position_PID(Encoder,Target_position);              //===位置PID控制器
 			Xianfu_Pwm();                                             //===PWM限幅
-//			printf("PWM after xianfu: %d \r\n", Moto1);
-    	Set_Pwm(Moto1);  
+			Set_Pwm(Moto1);  
 		}
 		if(status_50ms)
 		{
 			status_50ms = 0;
+			set_servo_state();
+			update_IR_state();//更新两侧红外检测状态
+			update_SW_state();//更新开关按下状态，并控制改变相应舵机的开和关
+			check_supply_state(INSIDE);
+			check_supply_state(OUTSIDE);
 			
-#ifdef TPP_RELEASE			
-			/* Read IR_PD_1 Pins */
-			
-			for(i = 0; i < 4; i++)
-			{
-				record1[i]=GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_2 << i);
-				if (ir_pd_1_counter[i] == 0)
-				{
-					if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_2 << i))
-						ir_pd_1_counter[i]++;
-				}
-				// Delay 100ms
-				else if (++ir_pd_1_counter[i] >= 3)
-				{
-					if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_2 << i))
-						ir_pd_1_flag[i] = 1;
-					else
-					{
-						ir_pd_1_flag[i] = 0;
-						ir_pd_1_counter[i] = 0;
-					}
-				}
+			if(outside_state==FULL&&inside_state==FULL)CCR3_Val = CCR3_Close;
+			else{
+				revolve_servo();//转动搅弹电机
+				CCR3_Val = CCR3_Open;
 			}
 			
-			/* Read IR_PD_2 Pins */
-			
-			for(i = 0; i < 4; i++)
-			{
-				record2[i]=GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_0 << i);
-				if (ir_pd_2_counter[i] == 0)
-				{
-					if (GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_0 << i))
-						ir_pd_2_counter[i]++;
-				}
-				// Delay 100ms
-				else if (++ir_pd_2_counter[i] >= 3)
-				{
-					if (GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_0 << i))
-						ir_pd_2_flag[i] = 1;
-					else
-					{
-						ir_pd_2_flag[i] = 0;
-						ir_pd_2_counter[i] = 0;
-					}
-				}
+			switch(inside_state){
+				case FULL:Target_position = container_1;break;
+				case NOT_FULL:Target_position = container_2;break;
 			}
-			
-			/* Read SW pins and Write SW_LED output */
-			for(i = 0; i < 2; i++)
-			{
-				if (container_counter[i] == 0)
-				{
-					if (!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i))// HIGH valid here
-					{
-						container_counter[i]++;//container_counter[i]=4;
-					}
-				}
-				//Check the SW pin status after 200ms
-				//这里存在一个可能的BUG，比如按动任意一个开关，200ms内再按动另一个开关，那么就会直接打开，而无视了延时
-				//虽然没啥用
-				else if (container_counter[i]++ == 4)
-				{
-					if (!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i))				//The car comes from the front end side
-					{
-						//whenever the supply is taken once, the counter plus 1
-						global_supply_counter++;
-						//open container here
-						if (i == 0)
-						{	
-							CCR1_Val = CCR1_Open;
-							GPIO_WriteBit(GPIOB,GPIO_Pin_10,Bit_SET);
-						}
-						else
-						{
-							CCR2_Val = CCR2_Open;
-							GPIO_WriteBit(GPIOB,GPIO_Pin_11,Bit_SET);
-						}
-					}
-					else
-						container_counter[i] = 0;
-				}
-				//Open container for 1.5s
-				else if(container_counter[i] == 30 + 4)
-				{
-					//close container here
-					if (i == 0)
-					{
-						CCR1_Val = CCR1_Close;
-						GPIO_WriteBit(GPIOB,GPIO_Pin_10,Bit_RESET);
-					}
-					else
-					{
-						CCR2_Val = CCR2_Close;
-						GPIO_WriteBit(GPIOB,GPIO_Pin_11,Bit_RESET);
-					}
-				}
-				else if(GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i) && container_counter[i] > 30 + 4)
-				{
-					container_counter[i] = 0;
-				}
+			switch(outside_state){
+				case FULL:Target_position = container_2;break;
+				case NOT_FULL:Target_position = container_1;break;
 			}
-			
-			/* Control the state of FSM */
-			switch(FSM_last_state)
-			{
-				case 1:
-					if ((!ir_pd_2_flag[0] || !ir_pd_2_flag[1])
-						&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
-						&& CCR2_Val == CCR2_Close
-						&& global_supply_counter == 1)
-					{
-						FSM_state = 1;
-						break;
-					}
-				default:
-					/* Two infantries share the first 200 bullets */
-					if (global_supply_counter < 2)
-					{
-						if ((!ir_pd_1_flag[0] || 
-							!ir_pd_1_flag[1])
-							&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4)
-							&& CCR1_Val == CCR1_Close)
-						{
-							FSM_state = 0;
-						}
-						else if ((!ir_pd_2_flag[0] || !ir_pd_2_flag[1])
-							&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
-							&& CCR2_Val == CCR2_Close)
-						{
-							FSM_state = 1;
-						}
-						else
-						{
-							FSM_state = 2;
-						}
-					}
-					/* Otherwise each infantry gets 100 bullets each time */
-					else
-					{
-						if ((!ir_pd_1_flag[0] || 
-							!ir_pd_1_flag[1] || !ir_pd_1_flag[2])
-							&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4) 
-							&& CCR1_Val == CCR1_Close)
-						{
-							FSM_state = 3;
-						}
-						else if ((!ir_pd_2_flag[0] || !ir_pd_2_flag[1]
-							|| !ir_pd_2_flag[2])
-							&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
-							&& CCR2_Val == CCR2_Close)
-						{
-							FSM_state = 4;
-						}
-						else
-						{
-							FSM_state = 5;
-						}
-					}
-			}
-
-			
-			FSM_last_state = FSM_state;
-			/* Control Motor and Upper Gate via FSM */
-			switch(FSM_state)
-			{
-				/* Supply container 1 */
-				case 0:
-				case 3:
-					if (Target_position >= container_2 - 100 && Target_position <=  container_2 + 100)
-					{
-						anti_piping_counter = 0;
-					}
-					
-					if (anti_piping_counter == 0)
-						anti_piping_counter++;
-					else
-					{
-						//Delay 2s
-						if (++anti_piping_counter == 40)
-						{
-							anti_piping_counter = 0;
-							vibration_counter = 8;
-						}
-					}
-					Target_position = container_1;
-					CCR3_Val = CCR3_Open;
-					break;
-					
-				/* Supply container 2 */
-				case 1:
-				case 4:
-					if (Target_position >= container_1 - 100 && Target_position <=  container_1 + 100)
-						anti_piping_counter = 0;
-					
-					if (anti_piping_counter == 0)
-						anti_piping_counter++;
-					else
-					{
-						//Delay 2s
-						if (++anti_piping_counter == 40)
-						{
-							anti_piping_counter = 0;
-							vibration_counter = 8;
-						}
-					}
-					Target_position = container_2;
-					CCR3_Val = CCR3_Open;
-					break;
-					
-				/* Supply none */
-				default:
-					if (CCR3_Val == CCR3_Open)
-					{
-						if (vibration_counter % 2)
-							vibration_counter = 7;
-						else
-							vibration_counter = 8;
-						anti_piping_counter = 0;
-					}
-					CCR3_Val = CCR3_Close;					
-			}
-#else
-			if(!usart_buffer_pointer)
-				printf("Target: %d, Current: %d \r\n", Target_position, Encoder);
-#endif			
-//			printf("GPIO read: %d \r\n", GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5));
-			if (CCR3_Val != CCR3_Close)
-				if (++counter_2s >= 40)
-				{
-					counter_2s = 0;
-					if (CCR4_Val == CCR4_1)
-						CCR4_Val = CCR4_2;
-					else
-						CCR4_Val = CCR4_1;
-				}
-			
-			/* The following runs every 200ms */
-			if (++counter_200ms >= 4)
-			{
-				/* To prevent bullets from piping on the 4-way tube */
-				if (vibration_counter > 0)
-				{
-					vibration_counter--;
-					if (vibration_counter % 2)
-						Target_position -= 50;
-					else
-						Target_position += 50;
-				}
-			}
-				
-			/* Update Servo PWM Outputs */
-			TIM_SetCompare1(TIM3, CCR1_Val);
-			TIM_SetCompare2(TIM3, CCR2_Val);
-			TIM_SetCompare3(TIM3, CCR3_Val);
-			TIM_SetCompare4(TIM3, CCR4_Val);
-		}
-		if(usart_command_status)
-		{
-			usart_command_status = 0;
-			usart_receive_buffer[usart_buffer_pointer] = '\0';
-			printf("\n\rMessage received: %s\r\n", usart_receive_buffer);
-			Target_position = atoi((char *)usart_receive_buffer);
-			TIM_SetCompare1(TIM3, CCR1_Val);
-			usart_buffer_pointer = 0;
+			//根据两边是否满弹控制拨弹电机，外侧优先
 		}
 	}
 }
@@ -637,7 +398,174 @@ void PWM_TIM10_Config(void)
   /* TIM10 enable counter */
   TIM_Cmd(TIM10, ENABLE);
 }
+/**
+  * @brief  get bullet quantity
+  * @param  the site of IR
+  * @retval lights counts
+  */
+int get_bullet_quantity(int site){
+	int lights=0;
+	switch(site){
+		case OUTSIDE:for(int i=0;i<4;i++)lights+=ir_pd_1_flag[i];break;
+		case INSIDE:for(int i=0;i<4;i++)lights+=ir_pd_2_flag[i];break;
+	}
+	return lights;
+}
+/**
+  * @brief  revolve the servo
+  * @param  none
+  * @retval none
+  */
+void revolve_servo(){
+	static uint32_t counter_2s = 0;
+	if (++counter_2s >= 40)
+	{
+		counter_2s = 0;
+		if (CCR4_Val == CCR4_1)
+			CCR4_Val = CCR4_2;
+		else
+			CCR4_Val = CCR4_1;
+	}
+}
+/**
+  * @brief  check supply state
+  * @param  the site of supply pipe
+  * @retval none
+  */
+void check_supply_state(int site){
+	switch(site){
+		case OUTSIDE:if(get_bullet_quantity(OUTSIDE)>=FULL)outside_state=FULL;else outside_state=NOT_FULL;break;
+		case INSIDE:if(get_bullet_quantity(INSIDE)>=FULL)inside_state=FULL;else inside_state=NOT_FULL;break;
+	}
+}
+/**
+  * @brief  set sercvo state.
+  * @param  None
+  * @retval None
+  * @tip	it will be executed every 50ms.
+  */
+void set_servo_state(){
+	/* Update Servo PWM Outputs */
+	TIM_SetCompare1(TIM3, CCR1_Val);
+	TIM_SetCompare2(TIM3, CCR2_Val);
+	TIM_SetCompare3(TIM3, CCR3_Val);
+	TIM_SetCompare4(TIM3, CCR4_Val);
+}
+/**
+  * @brief  update IR state.
+  * @param  None
+  * @retval None
+  * @tip	it will be executed every 50ms.
+  */
+void update_IR_state(){
+	/* Read IR_PD_1 Pins */
 
+	for(int i = 0; i < 4; i++)
+	{
+		record1[i]=GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_2 << i);
+		if (ir_pd_1_counter[i] == 0)
+		{
+			if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_2 << i))
+				ir_pd_1_counter[i]++;
+		}
+		// Delay 100ms
+		else if (++ir_pd_1_counter[i] >= 3)
+		{
+			if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_2 << i))
+				ir_pd_1_flag[i] = 1;
+			else
+			{
+				ir_pd_1_flag[i] = 0;
+				ir_pd_1_counter[i] = 0;
+			}
+		}
+	}
+
+	/* Read IR_PD_2 Pins */
+
+	for(int i = 0; i < 4; i++)
+	{
+		record2[i]=GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_0 << i);
+		if (ir_pd_2_counter[i] == 0)
+		{
+			if (GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_0 << i))
+				ir_pd_2_counter[i]++;
+		}
+		// Delay 100ms
+		else if (++ir_pd_2_counter[i] >= 3)
+		{
+			if (GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_0 << i))
+				ir_pd_2_flag[i] = 1;
+			else
+			{
+				ir_pd_2_flag[i] = 0;
+				ir_pd_2_counter[i] = 0;
+			}
+		}
+	}
+}
+/**
+  * @brief  update SW state and control the related servos.
+  * @param  None
+  * @retval None
+  * @tip	it will be executed every 50ms.
+  */
+void update_SW_state(){
+	/* Read SW pins and Write SW_LED output */
+	for(int i = 0; i < 2; i++)
+	{
+		if (container_counter[i] == 0)
+		{
+			if (!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i))// HIGH valid here
+			{
+				container_counter[i]++;//container_counter[i]=4;
+			}
+		}
+		//Check the SW pin status after 200ms
+		//这里存在一个可能的BUG，比如按动任意一个开关，200ms内再按动另一个开关，那么就会直接打开，而无视了延时
+		//虽然没啥用
+		else if (container_counter[i]++ == 4)
+		{
+			if (!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i))			
+			{
+				//whenever the supply is taken once, the counter plus 1
+				global_supply_counter++;
+				//open container here
+				if (i == 0)
+				{	
+					CCR1_Val = CCR1_Open;
+					GPIO_WriteBit(GPIOB,GPIO_Pin_10,Bit_SET);//打开补弹指示灯
+				}
+				else
+				{
+					CCR2_Val = CCR2_Open;
+					GPIO_WriteBit(GPIOB,GPIO_Pin_11,Bit_SET);//打开补弹指示灯
+				}
+			}
+			else
+				container_counter[i] = 0;
+		}
+		//Open container for 1.5s
+		else if(container_counter[i] == 30 + 4)
+		{
+			//close container here
+			if (i == 0)
+			{
+				CCR1_Val = CCR1_Close;
+				GPIO_WriteBit(GPIOB,GPIO_Pin_10,Bit_RESET);
+			}
+			else
+			{
+				CCR2_Val = CCR2_Close;
+				GPIO_WriteBit(GPIOB,GPIO_Pin_11,Bit_RESET);
+			}
+		}
+		else if(GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4 << i) && container_counter[i] > 30 + 4)
+		{
+			container_counter[i] = 0;
+		}
+	}
+}
 
 #ifdef  USE_FULL_ASSERT
 

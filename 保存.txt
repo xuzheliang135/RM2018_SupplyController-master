@@ -1,0 +1,134 @@
+/* Control the state of FSM */
+			switch(FSM_last_state)
+			{
+				case 1:
+					if ((!ir_pd_2_flag[0] || !ir_pd_2_flag[1])
+						&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
+						&& CCR2_Val == CCR2_Close
+						&& global_supply_counter == 1)
+					{
+						FSM_state = 1;
+						break;
+					}
+				default:
+					/* Two infantries share the first 200 bullets */
+					if (global_supply_counter < 2)
+					{
+						if ((!ir_pd_1_flag[0] || 
+							!ir_pd_1_flag[1])
+							&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4)
+							&& CCR1_Val == CCR1_Close)
+						{
+							FSM_state = 0;
+						}
+						else if ((!ir_pd_2_flag[0] || !ir_pd_2_flag[1])
+							&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
+							&& CCR2_Val == CCR2_Close)
+						{
+							FSM_state = 1;
+						}
+						else
+						{
+							FSM_state = 2;
+						}
+					}
+					/* Otherwise each infantry gets 100 bullets each time */
+					else
+					{
+						if ((!ir_pd_1_flag[0] || 
+							!ir_pd_1_flag[1] || !ir_pd_1_flag[2])
+							&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4) 
+							&& CCR1_Val == CCR1_Close)
+						{
+							FSM_state = 3;
+						}
+						else if ((!ir_pd_2_flag[0] || !ir_pd_2_flag[1]
+							|| !ir_pd_2_flag[2])
+							&& GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_5) 
+							&& CCR2_Val == CCR2_Close)
+						{
+							FSM_state = 4;
+						}
+						else
+						{
+							FSM_state = 5;
+						}
+					}
+			}
+
+			
+			FSM_last_state = FSM_state;
+			/* Control Motor and Upper Gate via FSM */
+			switch(FSM_state)
+			{
+				/* Supply container 1 */
+				case 0:
+				case 3:
+					if (Target_position >= container_2 - 100 && Target_position <=  container_2 + 100)
+					{
+						anti_piping_counter = 0;
+					}
+					
+					if (anti_piping_counter == 0)
+						anti_piping_counter++;
+					else
+					{
+						//Delay 2s
+						if (++anti_piping_counter == 40)
+						{
+							anti_piping_counter = 0;
+							vibration_counter = 8;
+						}
+					}
+					Target_position = container_1;
+					CCR3_Val = CCR3_Open;
+					break;
+					
+				/* Supply container 2 */
+				case 1:
+				case 4:
+					if (Target_position >= container_1 - 100 && Target_position <=  container_1 + 100)
+						anti_piping_counter = 0;
+					
+					if (anti_piping_counter == 0)
+						anti_piping_counter++;
+					else
+					{
+						//Delay 2s
+						if (++anti_piping_counter == 40)
+						{
+							anti_piping_counter = 0;
+							vibration_counter = 8;
+						}
+					}
+					Target_position = container_2;
+					CCR3_Val = CCR3_Open;
+					break;
+					
+				/* Supply none */
+				default:
+					if (CCR3_Val == CCR3_Open)
+					{
+						if (vibration_counter % 2)
+							vibration_counter = 7;
+						else
+							vibration_counter = 8;
+						anti_piping_counter = 0;
+					}
+					CCR3_Val = CCR3_Close;					
+			}
+
+
+/* The following runs every 200ms */
+			if (++counter_200ms >= 4)
+			{
+				/* To prevent bullets from piping on the 4-way tube */
+				if (vibration_counter > 0)
+				{
+					vibration_counter--;
+					if (vibration_counter % 2)
+						Target_position -= 50;
+					else
+						Target_position += 50;
+				}
+			}
